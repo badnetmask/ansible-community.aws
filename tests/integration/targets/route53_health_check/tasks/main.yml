@@ -48,6 +48,12 @@
         failure_threshold: 2
       register: my_health_check
 
+    - assert:
+        that:
+          - my_health_check is not failed
+          - my_health_check is changed
+          - my_health_check.health_check.id is defined
+
     - name: Create a CNAME record that uses the health check
       route53:
         state: present
@@ -59,6 +65,13 @@
         # Routing policy
         identifier: "host1@www"
         health_check: "{{ my_health_check.health_check.id }}"
+      register: cnamerecord
+
+    - assert:
+        that:
+          - cnamerecord is not failed
+          - cnamerecord is changed
+          - cnamerecord.diff.after.identifier == "host1@www"
 
   # ============================================================
 
