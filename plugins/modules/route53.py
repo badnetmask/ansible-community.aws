@@ -647,6 +647,9 @@ def main():
         else:
             command = command_in.upper()
 
+    if identifier_in:
+      resource_record_set['SetIdentifier'] = identifier_in
+
     if not module.check_mode:
         try:
             change_resource_record_sets = route53.change_resource_record_sets(

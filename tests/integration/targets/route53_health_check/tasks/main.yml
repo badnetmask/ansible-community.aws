@@ -70,7 +70,10 @@
         type: CNAME
         record: "www.{{ resource_prefix }}.public"
         value: "host1.{{ resource_prefix }}.public"
+        ttl: 30
+        # Routing policy
         identifier: "host1@www"
+        health_check: "{{ my_health_check.health_check.id }}"
       ignore_errors: True
 
     - name: Delete the health check
