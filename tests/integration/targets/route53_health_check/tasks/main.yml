@@ -1,0 +1,101 @@
+---
+- name: 'route53_health_check integration tests'
+  collections:
+    - amazon.aws
+  module_defaults:
+    group/aws:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+  block:
+
+    # ============================================================
+
+    - name: Create VPC for use in testing
+      ec2_vpc_net:
+        name: "{{ resource_prefix }}-vpc"
+        cidr_block: 10.22.32.0/23
+        tags:
+          Name: Ansible ec2_instance Testing VPC
+        tenancy: default
+      register: testing_vpc
+
+    - name: Create a public zone
+      route53_zone:
+        zone: "{{ resource_prefix }}.public"
+        comment: original comment
+        state: present
+      register: output
+
+    - assert:
+        that:
+          - output.changed
+          - output.comment == 'original comment'
+          - output.name == '{{ resource_prefix }}.public.'
+          - not output.private_zone
+
+    # ============================================================
+
+    - name: Create a health check
+      route53_health_check:
+        state: present
+        fqdn: "host1.{{ resource_prefix }}.public"
+        type: HTTP_STR_MATCH
+        resource_path: /
+        string_match: "Hello"
+        request_interval: 10
+        failure_threshold: 2
+      register: my_health_check
+
+    - name: Create a CNAME record that uses the health check
+      route53:
+        state: present
+        zone: "{{ resource_prefix }}.public"
+        type: CNAME
+        record: "www.{{ resource_prefix }}.public"
+        value: "host1.{{ resource_prefix }}.public"
+        ttl: 30
+        # Routing policy
+        identifier: "host1@www"
+        health_check: "{{ my_health_check.health_check.id }}"
+
+  # ============================================================
+
+  always:
+    - name: Delete the CNAME that uses the health check
+      route53:
+        state: absent
+        zone: "{{ resource_prefix }}.public"
+        type: CNAME
+        record: "www.{{ resource_prefix }}.public"
+        value: "host1.{{ resource_prefix }}.public"
+        identifier: "host1@www"
+      ignore_errors: True
+
+    - name: Delete the health check
+      route53_health_check:
+        state: absent
+        fqdn: "host1.{{ resource_prefix }}.public"
+        type: HTTP_STR_MATCH
+        resource_path: /
+        string_match: "Hello"
+        request_interval: 10
+        failure_threshold: 2
+      ignore_errors: True
+
+    - name: Delete public zone
+      route53_zone:
+        zone: "{{ resource_prefix }}.public"
+        state: absent
+      ignore_errors: True
+
+    - name: remove the VPC
+      ec2_vpc_net:
+        name: "{{ resource_prefix }}-vpc"
+        cidr_block: 10.22.32.0/23
+        state: absent
+      register: removed
+      until: removed is not failed
+      ignore_errors: yes
+      retries: 10
